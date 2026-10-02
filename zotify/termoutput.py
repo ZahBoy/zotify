@@ -15,6 +15,7 @@ from time import sleep
 from tqdm import tqdm
 from tqdm.auto import tqdm as tqdmauto
 from traceback import TracebackException
+import sys
 from urllib3 import HTTPResponse
 
 from zotify.const import *
@@ -186,10 +187,17 @@ class Printer:
             msg, style = Printer._prefixes(msg, style, channel)
             with Printer.pause_loader(style in {PrintStyle.LOADER, PrintStyle.LOADER_CYCLE}):
                 for line in str(msg).splitlines():
-                    if end == "\n":
-                        tqdm.write(line.ljust(Printer._term_cols()))
-                    else:
-                        tqdm.write(line, end=end)
+                    try:
+                        if end == "\n":
+                            tqdm.write(line.ljust(Printer._term_cols()))
+                        else:
+                            tqdm.write(line, end=end)
+                    except UnicodeEncodeError:
+                        safe_line = line.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8')
+                        if end == "\n":
+                            tqdm.write(safe_line.ljust(Printer._term_cols()))
+                        else:
+                            tqdm.write(safe_line, end=end)
                     Printer.LAST_PRINT = style
     
     @staticmethod

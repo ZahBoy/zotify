@@ -189,14 +189,15 @@ class MetadataIO:
             self.owner              : User              = obj.parse_relatives([owner], User, make_parent=True)[0]
             self.owner.name                             = self.owner.display_name
         
-        playlist_items              : dict              = resp.get(ITEMS)
+        playlist_items              : dict              = resp.get(ITEMS) or resp.get(TRACKS)
         if playlist_items and isinstance(obj, Playlist):
-            self.length             : int               = resp.get(TOTAL)
-            items                   : list[dict]        = playlist_items.get(ITEMS)
+            self.length             : int               = resp.get(TOTAL) or (playlist_items.get(TOTAL) if isinstance(playlist_items, dict) else None)
+            items                   : list[dict]        = playlist_items.get(ITEMS) if isinstance(playlist_items, dict) else None
             if items:
                 tracks_eps_empty = obj.unwrap(items)
                 for i, t_or_e in enumerate(tracks_eps_empty):
-                    ensure_uri(t_or_e, TRACK + str(obj.ccount+i+1))
+                    if t_or_e is not None:
+                        ensure_uri(t_or_e, TRACK + str(obj.ccount+i+1))
                 self.tracks_or_eps = obj.parse_relatives(tracks_eps_empty, (Track, Episode))
                 if not any(self.tracks_or_eps):
                     Printer.hashtaged(PrintChannel.WARNING,
@@ -208,7 +209,7 @@ class MetadataIO:
                                     f'PLAYLIST "{self.name}" ({obj.uri})\n' +
                                     'HAS [Playlist.Items] BUT NO [Playlist.Items.Items]\n' +
                                     'RECOMMENDED TO SET CONFIG "API_CLIENT_LEGACY = False"')
-            self._needs_expansion = not items or playlist_items.get(NEXT) is not None
+            self._needs_expansion = not items or (isinstance(playlist_items, dict) and playlist_items.get(NEXT) is not None)
         
         publish_time                : dict[str, int]    = resp.get(PUBLISH_TIME)
         if publish_time:

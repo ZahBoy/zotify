@@ -181,3 +181,26 @@ def timestamp_utc(timestamp_ms: str | None) -> str | None:
 
 def strptime_utc(dtstr: str) -> datetime:
     return datetime.strptime(dtstr[:-1], r'%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
+
+
+def check_internet_connection(host: str = "8.8.8.8", port: int = 53, timeout: float = 3.0) -> bool:
+    import socket
+    try:
+        socket.setdefaulttimeout(timeout)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((host, port))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+def wait_for_internet_connection(check_interval: float = 5.0) -> None:
+    import time
+    if check_internet_connection():
+        return
+    Printer.hashtaged(PrintChannel.WARNING, 'NETWORK DISCONNECTED - WAITING FOR INTERNET CONNECTION TO RESUME...')
+    while not check_internet_connection():
+        time.sleep(check_interval)
+    Printer.hashtaged(PrintChannel.MANDATORY, 'NETWORK CONNECTION RESTORED! RESUMING DOWNLOAD...')
+

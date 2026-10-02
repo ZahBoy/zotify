@@ -70,7 +70,7 @@ CONFIG_VALUES = {
     REGEX_ALBUM_SKIP:           { DEFAULT: '',                        TYPE: str,    ARG: ('--regex-album-skip'                        ,) },
     
     # Encoding Options
-    DOWNLOAD_FORMAT:            { DEFAULT: 'copy',                    TYPE: str,    ARG: ('--codec', '--download-format'              ,) },
+    DOWNLOAD_FORMAT:            { DEFAULT: 'flac',                    TYPE: str,    ARG: ('--codec', '--download-format'              ,) },
     DOWNLOAD_QUALITY:           { DEFAULT: 'auto',                    TYPE: str,    ARG: ('-q', '--download-quality'                  ,) },
     TRANSCODE_BITRATE:          { DEFAULT: 'auto',                    TYPE: str,    ARG: ('-b', '--bitrate', '--transcode-bitrate'    ,) },
     CUSTOM_FFMEPG_ARGS:         { DEFAULT: '',                        TYPE: str,    ARG: ('--custom-ffmpeg-args'                      ,) },
@@ -245,6 +245,10 @@ class Config:
     
     @classmethod
     def get(cls, key: str) -> Any:
+        if not cls.Values or cls.Values.get(key) is None:
+            cfg = CONFIG_VALUES.get(key)
+            if cfg:
+                return safe_typecast(cfg, DEFAULT, cfg[TYPE])
         return cls.Values.get(key)
     
     @classmethod
@@ -268,7 +272,7 @@ class Config:
     # Main Options
     @classmethod
     def get_root_path(cls) -> PurePath:
-        if cls.get(ROOT_PATH) == '':
+        if not cls.get(ROOT_PATH):
             root_path = PurePath(Path.home() / 'Music/Zotify Music/')
         else:
             root_path = PurePath(Path(cls.get(ROOT_PATH)).expanduser())
@@ -277,7 +281,7 @@ class Config:
     
     @classmethod
     def get_root_podcast_path(cls) -> PurePath:
-        if cls.get(ROOT_PODCAST_PATH) == '':
+        if not cls.get(ROOT_PODCAST_PATH):
             root_podcast_path = PurePath(Path.home() / 'Music/Zotify Podcasts/')
         else:
             root_podcast_path:str = cls.get(ROOT_PODCAST_PATH)
@@ -588,7 +592,11 @@ class Config:
     # API Options
     @classmethod
     def get_api_client_id(cls) -> str:
-        return cls.get(API_CLIENT_ID)
+        client_id = cls.get(API_CLIENT_ID)
+        if not client_id:
+            from librespot.core import MercuryRequests
+            return MercuryRequests.keymaster_client_id
+        return client_id
     
     @classmethod
     def get_api_credentials_location(cls) -> PurePath:
@@ -611,20 +619,20 @@ class Config:
     
     @classmethod
     def get_fetch_timeout(cls) -> float | None:
-        timeout = max(cls.get(FETCH_TIMEOUT), 0.0)
+        timeout = max(cls.get(FETCH_TIMEOUT) or 0.0, 0.0)
         return None if not timeout else timeout
     
     @classmethod
     def get_fetch_delay(cls) -> float:
-        return max(cls.get(FETCH_DELAY), 0.0)
+        return max(cls.get(FETCH_DELAY) or 0.0, 0.0)
     
     @classmethod
     def get_retry_attempts(cls) -> int:
-        return max(cls.get(RETRY_ATTEMPTS), 0)
+        return max(cls.get(RETRY_ATTEMPTS) or 0, 0)
     
     @classmethod
     def get_retry_delay(cls, retry_attempt_number: int = 0) -> float:
-        base_delay = max(cls.get(RETRY_DELAY), 0.0)
+        base_delay = max(cls.get(RETRY_DELAY) or 0.0, 0.0)
         if cls.get_escalating_delay():
             base_delay *= 2 ** retry_attempt_number
         return base_delay
@@ -640,7 +648,7 @@ class Config:
     @classmethod
     def get_oauth_timeout(cls) -> float | None:
         timeout = cls.get(REDIRECT_TIMEOUT)
-        return timeout if timeout > 0.0 else None
+        return timeout if timeout is not None and timeout > 0.0 else None
     
     @classmethod
     def get_oauth_address(cls) -> str:
@@ -787,27 +795,43 @@ class LoginHandler:
     @classmethod
     def attempt_login(cls, args) -> None:
         if not cls.SESSION:
-            try: cls.login5_cred_login(cls.get_creds_from_file(Zotify.CONFIG.get_credentials_location()))
+            try:
+                creds = cls.get_creds_from_file(Zotify.CONFIG.get_credentials_location())
+                if creds:
+                    if creds.get("type") == OAuth.OAUTH_PKCE_TOKEN:
+                        client_id = creds.get("client_id") or MercuryRequests.keymaster_client_id
+                        cls.OAUTH = cls.create_oauth(client_id).ingest_token_response(creds)
+                        cls.OAUTH.refresh_token()
+                        if client_id == MercuryRequests.keymaster_client_id:
+                            cls.SESSION_BUILDER.login_credentials = cls.OAUTH.get_credentials()
+                            cls.SESSION = cls.SESSION_BUILDER.create()
+                    else:
+                        cls.login5_cred_login(creds)
             except Exception as e:
-                Printer.hashtaged(PrintChannel.MANDATORY, f'Login5 via saved credentials failed! {e.args[0]}. Falling back to interactive login')
+                err_msg = e.args[0] if getattr(e, 'args', None) and len(e.args) > 0 else str(e)
+                Printer.hashtaged(PrintChannel.MANDATORY, f'Login via saved credentials failed! {err_msg}. Falling back to interactive login')
         if not cls.SESSION:
             try: cls.login5_cred_login(cls.get_login5_from_args(args))
             except Exception as e:
-                Printer.hashtaged(PrintChannel.MANDATORY, f'Login5 via commandline args failed! {e.args[0]}. Falling back to interactive login')
+                err_msg = e.args[0] if getattr(e, 'args', None) and len(e.args) > 0 else str(e)
+                Printer.hashtaged(PrintChannel.MANDATORY, f'Login5 via commandline args failed! {err_msg}. Falling back to interactive login')
         if not cls.SESSION:
             try: cls.login5_link_login()
             except Exception as e:
-                Printer.hashtaged(PrintChannel.MANDATORY, f'Login5 failed! {e.args[0]}')
+                err_msg = e.args[0] if getattr(e, 'args', None) and len(e.args) > 0 else str(e)
+                Printer.hashtaged(PrintChannel.MANDATORY, f'Login5 failed! {err_msg}')
         
         if not Zotify.CONFIG.permit_client_api(): return
         if not cls.OAUTH: 
             try: cls.oauth_cred_login(cls.get_creds_from_file(Zotify.CONFIG.get_api_credentials_location()))
             except Exception as e:
-                Printer.hashtaged(PrintChannel.MANDATORY, f'Custom Client API via saved credentials failed! {e.args[0]}. Falling back to interactive login')
+                err_msg = e.args[0] if getattr(e, 'args', None) and len(e.args) > 0 else str(e)
+                Printer.hashtaged(PrintChannel.MANDATORY, f'Custom Client API via saved credentials failed! {err_msg}. Falling back to interactive login')
         if not cls.OAUTH: 
             try: cls.oauth_link_login()
             except Exception as e:
-                Printer.hashtaged(PrintChannel.MANDATORY, f'Custom Client API failed! {e.args[0]}')
+                err_msg = e.args[0] if getattr(e, 'args', None) and len(e.args) > 0 else str(e)
+                Printer.hashtaged(PrintChannel.MANDATORY, f'Custom Client API failed! {err_msg}')
     
     @classmethod
     def login_success(cls) -> bool:
@@ -817,10 +841,12 @@ class LoginHandler:
     def save_credentials(cls) -> None:
         if not Zotify.CONFIG.get_save_credentials():
             return
-        if cls.SESSION:
+        if cls.OAUTH:
+            cls.OAUTH.save_creds(Zotify.CONFIG.get_credentials_location())
+        elif cls.SESSION:
             with open(Zotify.CONFIG.get_credentials_location(), "w") as f:
                 json.dump(cls.SESSION.credentials(), f)
-        if cls.OAUTH:
+        if cls.OAUTH and Zotify.CONFIG.permit_client_api() and str(Zotify.CONFIG.get_api_credentials_location()) != str(Zotify.CONFIG.get_credentials_location()):
             cls.OAUTH.save_creds(Zotify.CONFIG.get_api_credentials_location())
     
     @classmethod
@@ -864,6 +890,51 @@ class Zotify:
     # DYNAMIC PER QUERY
     TOTAL_API_CALLS         : int                       = None
     DATETIME_LAUNCH         : str                       = None
+    METADATA_CACHE          : dict                      = {}
+    
+    @classmethod
+    def get_metadata_cache_file(cls) -> Path:
+        system_paths = {
+            'win32': Path.home() / 'AppData/Roaming/Zotify',
+            'linux': Path.home() / '.local/share/zotify',
+            'darwin': Path.home() / 'Library/Application Support/Zotify'
+        }
+        cache_dir = system_paths.get(sys.platform, Path.cwd() / '.zotify')
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / 'metadata_cache.json'
+
+    @classmethod
+    def load_metadata_cache(cls):
+        cache_file = cls.get_metadata_cache_file()
+        if cache_file.exists():
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cls.METADATA_CACHE = json.load(f)
+            except Exception:
+                cls.METADATA_CACHE = {}
+
+    @classmethod
+    def save_metadata_cache(cls):
+        cache_file = cls.get_metadata_cache_file()
+        try:
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cls.METADATA_CACHE, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    @classmethod
+    def get_cached_metadata(cls, uri: str) -> dict | None:
+        if not cls.METADATA_CACHE:
+            cls.load_metadata_cache()
+        return cls.METADATA_CACHE.get(uri)
+
+    @classmethod
+    def set_cached_metadata(cls, uri: str, data: dict):
+        if not cls.METADATA_CACHE:
+            cls.load_metadata_cache()
+        if data:
+            cls.METADATA_CACHE[uri] = data
+            cls.save_metadata_cache()
     
     @classmethod
     def start_stats(cls) -> None:
@@ -898,6 +969,7 @@ class Zotify:
     def boot(cls, args) -> None:
         Printer.splash()
         cls.start_stats()
+        cls.load_metadata_cache()
         cls.CONFIG.load(args)
         cls.LOGGER = LogHandler.start_logger(cls.DATETIME_LAUNCH)
         

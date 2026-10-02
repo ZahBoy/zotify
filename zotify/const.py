@@ -204,6 +204,7 @@ MACOS_SYSTEM = 'Darwin'
 CODEC_MAP_TRACK = {
     'aac': 'aac',
     'fdk_aac': 'libfdk_aac',
+    'flac': 'flac',
     'mp3': 'libmp3lame',
     'ogg': 'copy',
     'opus': 'libopus',
@@ -213,6 +214,7 @@ CODEC_MAP_TRACK = {
 CODEC_MAP_EPISODE = {
     'aac': 'aac',
     'fdk_aac': 'libfdk_aac',
+    'flac': 'flac',
     'mp3': 'libmp3lame',
     'ogg': 'libvorbis',
     'opus': 'libopus',
@@ -222,6 +224,7 @@ CODEC_MAP_EPISODE = {
 EXT_MAP = {
     'aac': 'm4a',
     'fdk_aac': 'm4a',
+    'flac': 'flac',
     'mp3': 'mp3',
     'ogg': 'ogg',
     'opus': 'ogg', # for compatibilty

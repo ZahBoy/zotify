@@ -6,6 +6,13 @@ It's like youtube-dl, but for that other music platform.
 """
 
 import argparse
+import sys
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 from zotify.config import Zotify, Printer, CONFIG_VALUES, DEPRECIATED_CONFIGS
 from zotify.const import ARG, TYPE, HELP, CONFIG_FILE, LOCAL_SONG_ARCHIVE, GLOBAL_SONG_ARCHIVE

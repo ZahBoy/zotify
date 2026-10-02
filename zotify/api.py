@@ -124,22 +124,31 @@ class Content(HierarchicalNode):
     
     @classmethod
     def fetch_metadata(cls, uri: str, args: list[str] = []) -> dict[str]:
+        cached = Zotify.get_cached_metadata(uri)
+        if cached:
+            return cached
         resp = {}
         if Zotify.CONFIG.permit_legacy_api() or (Zotify.CONFIG.permit_client_api() and not cls is Playlist):
             argstr = arg_comb(cls._fetch_args, *args)
             resp = Zotify.invoke_url(f'{cls._url}/{uri.split(":")[-1]}?{MARKET_APPEND}{argstr}')
         else:
             resp = Zotify.invoke_libre_md(cls, uri)
-            if cls is Track and resp.get(DURATION):
-                resp[DURATION_MS] = resp.pop(DURATION)
-                if resp[ALBUM]:
-                    resp[ALBUM][ALBUM_TYPE] = str.lower(resp[ALBUM].pop(TYPE, ALBUM))
-            elif cls is Album and resp.get(TYPE):
-                resp[ALBUM_TYPE] = str.lower(resp.pop(TYPE))
-            elif cls is Playlist and resp.get(ATTRIBUTES):
-                resp.update(resp.pop(ATTRIBUTES))
-            resp.update({URI: ":" + uri, TYPE: cls.type_attr})
-        if resp: return resp
+            if not resp:
+                argstr = arg_comb(cls._fetch_args, *args)
+                resp = Zotify.invoke_url(f'{cls._url}/{uri.split(":")[-1]}?{MARKET_APPEND}{argstr}')
+            else:
+                if cls is Track and resp.get(DURATION):
+                    resp[DURATION_MS] = resp.pop(DURATION)
+                    if resp.get(ALBUM):
+                        resp[ALBUM][ALBUM_TYPE] = str.lower(resp[ALBUM].pop(TYPE, ALBUM))
+                elif cls is Album and resp.get(TYPE):
+                    resp[ALBUM_TYPE] = str.lower(resp.pop(TYPE))
+                elif cls is Playlist and resp.get(ATTRIBUTES):
+                    resp.update(resp.pop(ATTRIBUTES))
+                resp.update({URI: ":" + uri, TYPE: cls.type_attr})
+        if resp:
+            Zotify.set_cached_metadata(uri, resp)
+            return resp
         else:    raise ValueError("No Metadata Fetched")
     
     @staticmethod
@@ -374,15 +383,24 @@ class DLContent(Content):
     
     def fetch_stream(self) -> Streamer | None:
         stream_retry = 0
-        while stream_retry <= Zotify.CONFIG.get_retry_attempts():
-            if stream_retry: sleep(retry_delay)
-            if stream := Zotify.get_content_stream(self): break
+        max_retries = max(Zotify.CONFIG.get_retry_attempts(), 5)
+        while stream_retry < max_retries:
+            try:
+                if not check_internet_connection():
+                    wait_for_internet_connection()
+                if stream := Zotify.get_content_stream(self):
+                    return stream
+            except Exception as e:
+                if not check_internet_connection():
+                    wait_for_internet_connection()
+                else:
+                    sleep(2)
             retry_delay = Zotify.CONFIG.get_retry_delay(stream_retry)
+            sleep(retry_delay)
             stream_retry += 1
-        if stream is None:
-            Printer.hashtaged(PrintChannel.ERROR, f'SKIPPING {self.clsn.upper()} - FAILED TO GET CONTENT STREAM\n' +
-                                                  f'{self.clsn}_ID: {self.id}')
-        return stream
+        Printer.hashtaged(PrintChannel.ERROR, f'SKIPPING {self.clsn.upper()} - FAILED TO GET CONTENT STREAM\n' +
+                                              f'{self.clsn}_ID: {self.id}')
+        return None
     
     def fetch_stream_content(self, stream: Streamer, temppath: PurePath, parent_stack: ParentStack) -> str:
         disable = Zotify.CONFIG.get_standard_interface() or not Zotify.CONFIG.get_show_download_pbar()
@@ -437,7 +455,7 @@ class DLContent(Content):
     
     def convert_audio_format(self, temppath: PurePath, path: PurePath) -> str | None:
         output_params = ['-c:a', self._codec]
-        if self._codec != 'copy':
+        if self._codec not in {'copy', 'flac'}:
             bitrate = Zotify.CONFIG.get_transcode_bitrate()
             if bitrate in {"auto", ""}:
                 bitrate = Zotify.DOWNLOAD_BITRATE
@@ -578,9 +596,17 @@ class Track(DLContent, HasArtists, HasGenres, IsAddable, IsFavoritable):
     _regex_flag = Zotify.CONFIG.get_regex_track()
     _to_str_attrs = [ARTISTS, NAME]
     _to_db_attrs = [TRACK_NUMBER, ARTISTS, ALBUM]
-    _codec = CODEC_MAP_TRACK.get(Zotify.CONFIG.get_download_format().lower(), "copy")
-    _ext = EXT_MAP.get(Zotify.CONFIG.get_download_format().lower(), "ogg")
     _url = TRACK_URL
+    
+    @property
+    def _codec(self) -> str:
+        fmt = Zotify.CONFIG.get_download_format().lower()
+        return CODEC_MAP_TRACK.get(fmt, "flac" if fmt == "flac" else "copy")
+    
+    @property
+    def _ext(self) -> str:
+        fmt = Zotify.CONFIG.get_download_format().lower()
+        return EXT_MAP.get(fmt, "flac" if fmt == "flac" else "ogg")
     
     def __init__(self, uri: str) -> None:
         super().__init__(uri)
@@ -782,9 +808,17 @@ class Episode(DLContent, HasImage, IsAddable):
     _regex_flag = Zotify.CONFIG.get_regex_episode()
     _to_str_attrs = [SHOW, NAME]
     _to_db_attrs = [SHOW]
-    _codec = CODEC_MAP_EPISODE.get(Zotify.CONFIG.get_download_format().lower(), "copy")
-    _ext = EXT_MAP.get(Zotify.CONFIG.get_download_format().lower(), "copy")
     _url = EPISODE_URL
+    
+    @property
+    def _codec(self) -> str:
+        fmt = Zotify.CONFIG.get_download_format().lower()
+        return CODEC_MAP_EPISODE.get(fmt, "flac" if fmt == "flac" else "copy")
+    
+    @property
+    def _ext(self) -> str:
+        fmt = Zotify.CONFIG.get_download_format().lower()
+        return EXT_MAP.get(fmt, "flac" if fmt == "flac" else "ogg")
     
     def __init__(self, uri: str):
         super().__init__(uri)
@@ -811,7 +845,7 @@ class Episode(DLContent, HasImage, IsAddable):
                                                    f'Episode_ID: {self.id}')
             return None
         direct_download_url = resp[DATA][EPISODE][AUDIO][ITEMS][-1][URL]
-        if STREAMABLE_PODCAST not in direct_download_url and "audio_preview_url" in resp:
+        if STREAMABLE_PODCAST not in direct_download_url:
             self.partner_url = direct_download_url
         return self.partner_url
     
