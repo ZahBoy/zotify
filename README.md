@@ -1,20 +1,32 @@
-# Zotify
+# Zotify (Rekordbox & DJ Edition)
 
-## A highly customizable music and podcast downloader
+## A highly customizable music and podcast downloader with Pioneer Rekordbox integration
+
+[![Fork of Googolplexed0/zotify](https://img.shields.io/badge/fork-Googolplexed0%2Fzotify-blue.svg)](https://github.com/Googolplexed0/zotify)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-brightgreen.svg)](https://www.python.org/)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org/)
 
 <p align="center">
   <img src="https://i.imgur.com/hGXQWSl.png" width="50%" alt="Zotify logo">
 </p>
 
+> [!NOTE]
+> **DJ & Rekordbox Edition**: This repository is an enhanced fork of [Googolplexed0/zotify](https://github.com/Googolplexed0/zotify) (v0.21.1) tailored for DJs, audiophiles, and music collectors. It features native **Lossless FLAC** encoding, full **Pioneer Rekordbox** compatibility, 1-click **M3U8 Crate export**, persistent disk **metadata caching**, network auto-reconnect, and Windows UTF-8 console fixes. See [REKORDBOX.md](REKORDBOX.md) for the complete DJ setup guide.
+
 ## Features
 
+- **Pioneer Rekordbox & DJ Ready**: Direct export of UTF-8 `.m3u8` playlists and comprehensive Vorbis/ID3 tags (Title, Artist, Album, Track#, Disc#, Genre, Year, ISRC, Embedded Artwork) recognized immediately by Rekordbox, Engine DJ, and CDJs.
+- **Lossless FLAC Support**: Download directly in lossless FLAC (`--codec flac`) without lossy re-encoding artifacts.
+- **Smart Metadata Caching**: Persistent disk cache stores fetched metadata to accelerate re-runs and prevent Spotify API rate limiting.
+- **Auto-Reconnection & Network Resilience**: Automatically pauses and retries on dropped connections without failing downloads.
+- **Windows UTF-8 Stability**: Safe Unicode terminal printing preventing crashes with non-Latin titles (Japanese, Cyrillic, accented characters, emoji).
 - Downloads at up to 320kbps \*
 - Downloads directly from the source \*\*
 - Downloads podcasts, playlists, liked songs, albums, artists, singles.
 - Downloads synced lyrics from the source
 - Option to download in real time to reduce suspicious API request behavior \*\*\*
-- Supports multiple audio formats
-- Download directly from URL or use built-in in search
+- Supports multiple audio formats (FLAC, MP3, AAC, OGG, OPUS, VORBIS)
+- Download directly from URL or use built-in search
 - Bulk downloads from a list of URLs in a text file or parsed directly as arguments
 
 \* Free accounts are limited to 160kbps \*\
@@ -28,19 +40,19 @@
 
 ## Installation And Updating
 
-<details open><summary><strong>Install as Executable</strong></summary>
+<details open><summary><strong>Install as Executable (Recommended)</strong></summary>
 
-*Useable across system from the command line*
+*Usable across system from the command line*
 
-`pipx install git+https://github.com/Googolplexed0/zotify.git`
+`pipx install git+https://github.com/ZahBoy/zotify.git`
 
 </details>
 
 <details><summary><strong>Install as Python Module</strong></summary>
 
-*Useable when launched as a Python module*
+*Usable when launched as a Python module*
 
-`python -m pip install git+https://github.com/Googolplexed0/zotify.git`
+`python -m pip install git+https://github.com/ZahBoy/zotify.git`
 
 </details>
 
@@ -49,16 +61,31 @@
 *Update in accordance with your install method*
 
 **If Executable (pipx):**
-`pipx install -f git+https://github.com/Googolplexed0/zotify.git`
+`pipx install -f git+https://github.com/ZahBoy/zotify.git`
 
 **If Module:**
-`python -m pip install --force-reinstall git+https://github.com/Googolplexed0/zotify.git`
+`python -m pip install --force-reinstall git+https://github.com/ZahBoy/zotify.git`
 
 </details>
 
 ### Advanced Installation Instructions
 
 See [INSTALLATION](INSTALLATION.md) for a more detailed and opinionated installation walkthrough.
+
+## 🎧 Rekordbox & DJ Software Quick Start
+
+To download a Spotify playlist as a Rekordbox-compatible DJ crate with lossless FLAC and an `.m3u8` playlist file:
+
+```bash
+zotify -e True --codec flac "https://open.spotify.com/playlist/YOUR_PLAYLIST_ID"
+```
+
+Then in **Pioneer Rekordbox**:
+1. Open Rekordbox and navigate to **Playlists** in the left sidebar tree.
+2. Drag and drop the downloaded `.m3u8` playlist file directly into Rekordbox (or right-click `Playlists` -> choose `Import Playlist`).
+3. Rekordbox will import all tracks with full metadata, high-resolution artwork, and exact playlist order ready for mixing.
+
+See **[REKORDBOX.md](REKORDBOX.md)** for recommended `config.json` presets, hardware compatibility, and DJ workflows.
 
 ## Usage
 
@@ -146,7 +173,7 @@ Set arguments in the commandline like this: `-ie False` or `--codec mp3`. Wrap c
 
 | Encoding Options             | Command Line Config Flag            | Description                                                                              | Default Value |
 |------------------------------|-------------------------------------|------------------------------------------------------------------------------------------|---------------|
-| `DOWNLOAD_FORMAT`            | `--codec`, `--download-format`      | Audio codec, copy avoids remuxing (aac, fdk_aac, mp3, ogg, opus, vorbis)                 | copy          |
+| `DOWNLOAD_FORMAT`            | `--codec`, `--download-format`      | Audio codec, copy avoids remuxing (aac, fdk_aac, flac, mp3, ogg, opus, vorbis)           | flac          |
 | `DOWNLOAD_QUALITY`           | `-q`, `--download-quality`          | Source audio quality, auto selects highest available (normal, high, very_high\*)         | auto          |
 | `TRANSCODE_BITRATE`          | `-b`, `--bitrate`                   | Overwrite the bitrate for FFMPEG encoding (NOT RECOMMENDED)                              |               |
 | `CUSTOM_FFMEPG_ARGS`         | `--custom-ffmpeg-args`              | Additional FFMPEG functions or filters to apply to downloaded audio (space delimited)    |  `""`         |
